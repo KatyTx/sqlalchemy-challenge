@@ -25,11 +25,11 @@ Base = automap_base()
 
 # reflect the tables    
 Base.prepare(engine, reflect=True)
-# Query all 
-session = Session(engine)
+
 
 measurement = Base.classes.measurement
 station = Base.classes.station
+
 
 #flask setup
 app = Flask(__name__)
@@ -52,10 +52,11 @@ def homepage():
 def precipitationdata():
     """Return a list of precipitation by date"""
     
+    session = Session(engine)
     results = session.query(measurement.prcp, measurement.date).all()
 
     # close the session to end the communication with the database
-    #session.close()
+    session.close()
 
     #Return the JSON representation of your dictionary.
     prcp_results = {val:key for (key,val) in results}
@@ -65,12 +66,12 @@ def precipitationdata():
 
 
 #Return a JSON list of stations from the dataset.@app.route("/api/v1.0/stations")
-
 @app.route('/api/v1.0/stations')
 def stationdata():
     """Return a list of all stations"""
-    
+    session = Session(engine)
     results = session.query(station.station).all()
+    session.close()
     #print(results)
     station_results = list(np.ravel(results))
     #print(station_results)
@@ -81,10 +82,15 @@ def stationdata():
 @app.route("/api/v1.0/tobs")
 def active_station():
     """Return information of most active station"""
-    active_stations = session.query(measurement.station, func.count(measurement.date)).group_by(measurement.station)
-    high_activity = active_stations[0][0]
-    amountof_observations = active_stations[0][1]
-    highactivestation_yrtemp = session.query(measurement.date, measurement.tobs).filter(and_(measurement.date<=end, measurement.date>=last_year),measurement.station ==high_activity).all()
+    #start_date = dt.date(2015, 7, 8)
+    session = Session(engine)
+    end_date = dt.date(2015, 7, 18)
+    last_year = end_date - dt.timedelta(365)
+    high_activity = 'USC00511918'
+    #active_stations = session.query(measurement.station, func.count(measurement.date)).group_by(measurement.station)
+    
+    highactivestation_yrtemp = session.query(measurement.date, measurement.tobs).filter(and_(measurement.date<=end_date, measurement.date>=last_year),measurement.station ==high_activity).all()
+    session.close()
     act_results = list(np.ravel(highactivestation_yrtemp))
     #print(station_results)
     return jsonify(act_results)
@@ -93,18 +99,22 @@ def active_station():
 #Return a JSON list of the minimum temperature, the average temperature, and the max temperature for a given start or start-end range.
 #When given the start only, calculate `TMIN`, `TAVG`, and `TMAX` for all dates greater than and equal to the start date.
 @app.route("/api/v1.0/<start>")
-def start_date():    
-    start = dt.date(2015, 7, 8)
+def start_date(start):    
+    session = Session(engine)
+    print(f"\n\n\nincoming start: {start}")
+    print(f"type: {type(start)}\n\n\n")
     starttemp_data = session.query(func.min(measurement.tobs), func.avg(measurement.tobs), func.max(measurement.tobs)).filter(measurement.date >= start).all()
-    
+    session.close()
     return jsonify(starttemp_data)
 
 #start and end route
 #When given the start and the end date, calculate the `TMIN`, `TAVG`, and `TMAX` for dates between the start and end date inclusive.
 @app.route("/api/v1.0/<start>/<end>")
-def range_date():
-    start = dt.date(2015, 7, 8)
-    end = dt.date(2015, 7, 18)
+def range_date(start,end):
+    session = Session(engine)
     stendtemp_data = session.query(func.min(measurement.tobs), func.avg(measurement.tobs), func.max(measurement.tobs)).filter(and_(measurement.date >= start, measurement.date <= end)).all()
-    
+    session.close()
     return jsonify(stendtemp_data)
+
+if __name__ == "__main__":
+    app.run(debug=True)
